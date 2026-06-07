@@ -141,6 +141,9 @@ function initAudioAndPlayBGM() {
       // 킥: 1, 3, 5, 7박 (매 2틱)
       if (beat % 2 === 0) playKick(vol * 0.5);
 
+      // 하이햇 느낌 (매 틱 고음 짧게)
+      if (beat % 2 === 1) playTone(2000 + Math.random() * 200, 'square', 0.04, 0.025);
+
       // 베이스라인: 반음 긴장감 추가
       if (beat % 2 === 0) {
         const bass = [110.00, 116.54, 123.47, 110.00, 130.81, 123.47, 116.54, 110.00];
@@ -366,30 +369,33 @@ function endGame() {
     localStorage.setItem('ticker180_bestPct', STATE.bestPct);
   }
 
-  // ── [추가] 컴퓨터의 현재 시간 포맷팅 기록 생성 ──
+  // ── 날짜 포맷 생성 ──
   const now = new Date();
-  const timeString = `${now.getFullYear()}. ${String(now.getMonth() + 1).padStart(2, '0')}. ${String(now.getDate()).padStart(2, '0')}. ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const dateStr = `${now.getFullYear()}. ${String(now.getMonth()+1).padStart(2,'0')}. ${String(now.getDate()).padStart(2,'0')}. ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
 
-  // 신규 기록 객체 빌드
-  const newRecord = {
-    pnl: pnl,
-    pct: pct,
-    trades: STATE.totalTrades,
-    time: timeString
-  };
-
-  // 기존 랭킹 배열 로드 및 정렬 매칭
-  let rankingData = JSON.parse(localStorage.getItem('ticker180_rankings')) || [];
-  rankingData.push(newRecord);
-
-  // 규칙 바인딩: 1순위 수익률 내림차순, 2순위 거래 횟수 오름차순
-  rankingData.sort((a, b) => {
-    if (b.pct !== a.pct) return b.pct - a.pct;
-    return a.trades - b.trades;
+  // ── 종목별 최고 수익률 계산 ──
+  let bestStockPct  = 0;
+  let bestStockName = '';
+  STATE.selectedStocks.forEach(id => {
+    const s = getStock(id);
+    const finalPrice = STATE.prices[id] || s.basePrice;
+    const stockPct = parseFloat(((finalPrice - s.basePrice) / s.basePrice * 100).toFixed(1));
+    if (stockPct > bestStockPct) { bestStockPct = stockPct; bestStockName = s.name; }
   });
 
-  // 로컬스토리지 재저장
-  localStorage.setItem('ticker180_rankings', JSON.stringify(rankingData));
+  // ── 서버 SQLite DB에 랭킹 저장 ──
+  fetch('/api/ranking/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      pnl,
+      pct,
+      trades: STATE.totalTrades,
+      date: dateStr,
+      bestStockName,
+      bestStockPct,
+    })
+  }).catch(err => console.warn('랭킹 저장 실패:', err));
 
   STATE.phase = 'result';
   if (bgmInterval) {
